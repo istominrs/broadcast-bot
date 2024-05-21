@@ -59,17 +59,19 @@ func (s *Service) StartBroadcast(ctx context.Context) error {
 	ticker := time.NewTicker(2 * time.Hour)
 	defer ticker.Stop()
 
-	for _, u := range accessURLs {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-			msg := tgbotapi.NewMessage(s.channelID, u.Url)
-			if _, err := s.bot.Send(msg); err != nil {
-				log.Printf("%s: %s", op, err)
+	go func() {
+		for _, u := range accessURLs {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				msg := tgbotapi.NewMessage(s.channelID, u.Url)
+				if _, err := s.bot.Send(msg); err != nil {
+					log.Printf("%s: %s", op, err)
+				}
 			}
 		}
-	}
+	}()
 
 	time.Sleep(48 * time.Hour)
 	if err := s.client.RemoveAccessURLs(accessURLs); err != nil {

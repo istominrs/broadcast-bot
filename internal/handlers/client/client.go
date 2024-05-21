@@ -60,17 +60,19 @@ func (c *Client) CreateAccessURLs(servers []entity.Server) ([]entity.AccessURL, 
 	return accessURLs, nil
 }
 
-// RemoveAccessURL remove access url.
-func (c *Client) RemoveAccessURL(apiURL string, id string) error {
+// RemoveAccessURLs remove access urls.
+func (c *Client) RemoveAccessURLs(accessURLs []entity.AccessURL) error {
 	const op = "api.handlers.Remove"
 
-	resp, err := c.sendRemoveRequest(fmt.Sprintf("%s/%s", apiURL, id))
-	if err != nil {
-		return fmt.Errorf("%s: %w", op, err)
-	}
+	for _, u := range accessURLs {
+		resp, err := c.sendRemoveRequest(fmt.Sprintf("%s/%s", u.ApiURL, u.ID))
+		if err != nil {
+			return fmt.Errorf("%s: %w", op, err)
+		}
 
-	if resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("status: %d, %s: %w", resp.StatusCode, op, err)
+		if resp.StatusCode != http.StatusNoContent {
+			return fmt.Errorf("status: %d, %s: %w", resp.StatusCode, op, err)
+		}
 	}
 
 	return nil

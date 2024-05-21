@@ -56,17 +56,24 @@ func (s *Service) StartBroadcast(ctx context.Context) error {
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
-	for _, accessURL := range accessURLs {
-		msg := tgbotapi.NewMessage(s.channelID, accessURL.Url)
-		if _, err := s.bot.Send(msg); err != nil {
-			return fmt.Errorf("%s: %w", op, err)
-		}
+	ticker := time.NewTicker(2 * time.Hour)
+	defer ticker.Stop()
 
-		time.Sleep(2 * time.Hour)
-
-		if err := s.client.RemoveAccessURL(accessURL.ApiURL, accessURL.ID); err != nil {
-			return fmt.Errorf("%s: %w", op, err)
+	for _, u := range accessURLs {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			msg := tgbotapi.NewMessage(s.channelID, u.Url)
+			if _, err := s.bot.Send(msg); err != nil {
+				log.Printf("%s: %s", op, err)
+			}
 		}
+	}
+
+	time.Sleep(48 * time.Hour)
+	if err := s.client.RemoveAccessURLs(accessURLs); err != nil {
+		return fmt.Errorf("%s: %w", op, err)
 	}
 
 	return nil

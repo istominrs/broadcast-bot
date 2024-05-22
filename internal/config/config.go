@@ -1,49 +1,45 @@
 package config
 
 import (
-	"flag"
 	"os"
-
-	"github.com/ilyakaznacheev/cleanenv"
+	"strconv"
 )
 
 type Config struct {
-	DSN       string `yaml:"dsn"`
-	Token     string `yaml:"token"`
-	ChannelID int64  `yaml:"channel_id"`
+	DSN       string
+	Token     string
+	ChannelID int64
 }
 
 // MustLoad return instance of config struct.
 func MustLoad() *Config {
-	configPath := fetchConfigPath()
-	if configPath == "" {
-		panic("config path is empty")
-	}
-
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		panic("config path does not exist: " + configPath)
-	}
-
 	var cfg Config
-	if err := cleanenv.ReadConfig(configPath, &cfg); err != nil {
-		panic("cannot read config: " + err.Error())
+
+	dsn, token, channelID := fetchEnv()
+	if dsn == "" {
+		panic("empty dsn string")
 	}
+	cfg.DSN = dsn
+
+	if token == "" {
+		panic("empty token string")
+	}
+	cfg.Token = token
+
+	chID, err := strconv.Atoi(channelID)
+	if err != nil {
+		panic("invalid channel id " + err.Error())
+	}
+	cfg.ChannelID = int64(chID)
 
 	return &cfg
 }
 
-// fetchConfigPath fetches config path from command line flag or environment variable.
-// Priority: flag > env > default.
-// Default value is empty string.
-func fetchConfigPath() string {
-	var res string
+// fetchEnv receive variables from env.
+func fetchEnv() (string, string, string) {
+	dsn := os.Getenv("DSN")
+	token := os.Getenv("TOKEN")
+	channelID := os.Getenv("CHANNEL_ID")
 
-	flag.StringVar(&res, "config", "", "path to config file")
-	flag.Parse()
-
-	if res == "" {
-		res = os.Getenv("CONFIG_PATH")
-	}
-
-	return res
+	return dsn, token, channelID
 }

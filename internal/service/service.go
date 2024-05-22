@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log"
 	"telegram-bot/internal/entity"
 	"telegram-bot/internal/handlers/client"
 	"time"

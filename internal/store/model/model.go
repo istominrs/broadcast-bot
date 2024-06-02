@@ -5,3 +5,9 @@ type Server struct {
 	Port   string
 	Key    string
 }
+
+type AccessURL struct {
+	ID        int
+	AccessKey string
+	ApiURL    string
+}

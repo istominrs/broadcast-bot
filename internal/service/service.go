@@ -13,6 +13,10 @@ import (
 
 type store interface {
 	Server(context.Context) ([]entity.Server, error)
+
+	ExpiredURLs(context.Context) ([]entity.AccessURL, error)
+	AddURL(context.Context, entity.AccessURL) error
+	DeleteURL(context.Context, string) error
 }
 
 type Service struct {
@@ -57,27 +61,65 @@ func (s *Service) StartBroadcast(ctx context.Context) error {
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
-	ticker := time.NewTicker(2 * time.Hour)
-	defer ticker.Stop()
+	go s.startSending(ctx, accessURLs)
+	go s.startCleanup(ctx)
 
-	go func() {
-		for _, u := range accessURLs {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				msg := tgbotapi.NewMessage(s.channelID, u.Url)
-				if _, err := s.bot.Send(msg); err != nil {
+	// Wait until the context is done
+	<-ctx.Done()
+
+	return nil
+}
+
+// startSending handles the periodic sending of access URLs to the telegram channel.
+func (s *Service) startSending(ctx context.Context, accessURLs []entity.AccessURL) {
+	const op = "service.startSending"
+
+	sendTicker := time.NewTicker(24 * time.Hour)
+	defer sendTicker.Stop()
+
+	for _, u := range accessURLs {
+		select {
+		case <-ctx.Done():
+			return
+		case <-sendTicker.C:
+			if err := s.store.AddURL(ctx, u); err != nil {
+				log.Printf("%s: %s", op, err)
+			}
+
+			msg := tgbotapi.NewMessage(s.channelID, u.AccessKey)
+			if _, err := s.bot.Send(msg); err != nil {
+				log.Printf("%s: %s", op, err)
+			}
+		}
+	}
+}
+
+// startCleanup handles the periodic cleanup of expired access URLs.
+func (s *Service) startCleanup(ctx context.Context) {
+	const op = "service.startCleanup"
+
+	cleanupTicker := time.NewTicker(1 * time.Hour)
+	defer cleanupTicker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-cleanupTicker.C:
+			expiredURLs, err := s.store.ExpiredURLs(ctx)
+			if err != nil {
+				log.Printf("%s: %s", op, err)
+			}
+
+			if err := s.client.RemoveAccessURLs(expiredURLs); err != nil {
+				log.Printf("%s: %s", op, err)
+			}
+
+			for _, u := range expiredURLs {
+				if err := s.store.DeleteURL(ctx, u.ID); err != nil {
 					log.Printf("%s: %s", op, err)
 				}
 			}
 		}
-	}()
-
-	time.Sleep(48 * time.Hour)
-	if err := s.client.RemoveAccessURLs(accessURLs); err != nil {
-		return fmt.Errorf("%s: %w", op, err)
 	}
-
-	return nil
 }

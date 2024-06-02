@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS access_url (
+	id INTEGER NOT NULL,
+	access_key TEXT NOT NULL,
+	api_url TEXT NOT NULL,
+	created_at TIMESTAMP NOT NULL,
+	expired_at TIMESTAMP NOT NULL
+);

@@ -74,7 +74,7 @@ func (s *Service) StartBroadcast(ctx context.Context) error {
 func (s *Service) startSending(ctx context.Context, accessURLs []entity.AccessURL) {
 	const op = "service.startSending"
 
-	sendTicker := time.NewTicker(24 * time.Second)
+	sendTicker := time.NewTicker(24 * time.Hour)
 	defer sendTicker.Stop()
 
 	for _, u := range accessURLs {

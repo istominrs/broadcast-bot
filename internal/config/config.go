@@ -9,14 +9,13 @@ type Config struct {
 	DSN            string
 	Token          string
 	ChannelID      int64
-	MigrationsPath string
 }
 
 // MustLoad return instance of config struct.
 func MustLoad() *Config {
 	var cfg Config
 
-	dsn, token, channelID, migrationsPath := fetchEnv()
+	dsn, token, channelID := fetchEnv()
 	if dsn == "" {
 		panic("empty dsn string")
 	}
@@ -33,19 +32,14 @@ func MustLoad() *Config {
 	}
 	cfg.ChannelID = int64(chID)
 
-	if migrationsPath == "" {
-		panic("empty mirgations path string")
-	}
-
 	return &cfg
 }
 
 // fetchEnv receive variables from env.
-func fetchEnv() (string, string, string, string) {
+func fetchEnv() (string, string, string) {
 	dsn := os.Getenv("DSN")
 	token := os.Getenv("TOKEN")
 	channelID := os.Getenv("CHANNEL_ID")
-	migrationsPath := os.Getenv("MIGRATIONS_PATH")
 
-	return dsn, token, channelID, migrationsPath
+	return dsn, token, channelID
 }

@@ -2,17 +2,11 @@ package app
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"log"
 	"telegram-bot/internal/config"
 	"telegram-bot/internal/handlers/client"
 	"telegram-bot/internal/service"
 	"telegram-bot/internal/store"
-
-	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
 
 func Run() {

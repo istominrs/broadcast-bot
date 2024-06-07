@@ -102,7 +102,7 @@ func (s *Service) startSending(ctx context.Context, servers []entity.Server) {
 func (s *Service) startCleanup(ctx context.Context) {
 	const op = "service.startCleanup"
 
-	cleanupTicker := time.NewTicker(1 * time.Hour)
+	cleanupTicker := time.NewTicker(30 * time.Second)
 	defer cleanupTicker.Stop()
 
 	for {

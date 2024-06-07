@@ -70,7 +70,7 @@ func (s *Service) StartBroadcast(ctx context.Context) error {
 func (s *Service) startSending(ctx context.Context, servers []entity.Server) {
 	const op = "service.startSending"
 
-	sendTicker := time.NewTicker(20 * time.Second)
+	sendTicker := time.NewTicker(24 * time.Hour)
 	defer sendTicker.Stop()
 
 	for {
@@ -102,7 +102,7 @@ func (s *Service) startSending(ctx context.Context, servers []entity.Server) {
 func (s *Service) startCleanup(ctx context.Context) {
 	const op = "service.startCleanup"
 
-	cleanupTicker := time.NewTicker(30 * time.Second)
+	cleanupTicker := time.NewTicker(1 * time.Hour)
 	defer cleanupTicker.Stop()
 
 	for {

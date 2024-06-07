@@ -62,7 +62,7 @@ func (s *store) AddURL(ctx context.Context, url entity.AccessURL) error {
 	}
 
 	createdAt := time.Now()
-	expiredAt := createdAt.Add(time.Second * 48)
+	expiredAt := createdAt.Add(time.Hour * 48)
 
 	_, err = s.db.Query(ctx, "INSERT INTO access_url (id, access_key, api_url, created_at, expired_at) VALUES ($1, $2, $3, $4, $5)",
 		data.ID, data.AccessKey, data.ApiURL, createdAt, expiredAt,

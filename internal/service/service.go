@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/rand"
 	"telegram-bot/internal/entity"
 	"telegram-bot/internal/handlers/client"
 	"time"
@@ -74,19 +75,21 @@ func (s *Service) StartBroadcast(ctx context.Context) error {
 func (s *Service) startSending(ctx context.Context, accessURLs []entity.AccessURL) {
 	const op = "service.startSending"
 
-	sendTicker := time.NewTicker(24 * time.Hour)
+	sendTicker := time.NewTicker(20 * time.Second)
 	defer sendTicker.Stop()
 
-	for _, u := range accessURLs {
+	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-sendTicker.C:
-			if err := s.store.AddURL(ctx, u); err != nil {
+			randIndex := rand.Intn(len(accessURLs))
+
+			if err := s.store.AddURL(ctx, accessURLs[randIndex]); err != nil {
 				log.Printf("%s: %s", op, err)
 			}
 
-			msg := tgbotapi.NewMessage(s.channelID, u.AccessKey)
+			msg := tgbotapi.NewMessage(s.channelID, accessURLs[randIndex].AccessKey)
 			if _, err := s.bot.Send(msg); err != nil {
 				log.Printf("%s: %s", op, err)
 			}

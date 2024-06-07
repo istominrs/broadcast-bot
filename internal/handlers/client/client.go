@@ -31,33 +31,27 @@ func New() *Client {
 	}
 }
 
-// CreateAccessURLs create access urls.
-func (c *Client) CreateAccessURLs(servers []entity.Server) ([]entity.AccessURL, error) {
+// CreateAccessURL create access url.
+func (c *Client) CreateAccessURL(server entity.Server) (entity.AccessURL, error) {
 	const op = "api.handlers.CreateAccessKey"
 
-	accessURLs := make([]entity.AccessURL, 0, len(servers))
-	for _, server := range servers {
-		apiURL := createURL(server.IPAddr, server.Port, server.Key)
+	apiURL := createURL(server.IPAddr, server.Port, server.Key)
+	resp, err := c.sendCreateRequest(apiURL)
+	if err != nil {
+		return entity.AccessURL{}, fmt.Errorf("%s: %w", op, err)
+	}
+	defer resp.Body.Close()
 
-		resp, err := c.sendCreateRequest(apiURL)
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", op, err)
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusCreated {
-			return nil, fmt.Errorf("status: %d, %s: %w", resp.StatusCode, op, err)
-		}
-
-		accessURL, err := parseResponse(resp.Body, apiURL)
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", op, err)
-		}
-
-		accessURLs = append(accessURLs, accessURL)
+	if resp.StatusCode != http.StatusCreated {
+		return entity.AccessURL{}, fmt.Errorf("status: %d, %s: %w", resp.StatusCode, op, err)
 	}
 
-	return accessURLs, nil
+	accessURL, err := parseResponse(resp.Body, apiURL)
+	if err != nil {
+		return entity.AccessURL{}, fmt.Errorf("%s: %w", op, err)
+	}
+
+	return accessURL, nil
 }
 
 // RemoveAccessURLs remove access urls.

@@ -57,12 +57,7 @@ func (s *Service) StartBroadcast(ctx context.Context) error {
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
-	accessURLs, err := s.client.CreateAccessURLs(servers)
-	if err != nil {
-		return fmt.Errorf("%s: %w", op, err)
-	}
-
-	go s.startSending(ctx, accessURLs)
+	go s.startSending(ctx, servers)
 	go s.startCleanup(ctx)
 
 	// Wait until the context is done
@@ -72,7 +67,7 @@ func (s *Service) StartBroadcast(ctx context.Context) error {
 }
 
 // startSending handles the periodic sending of access URLs to the telegram channel.
-func (s *Service) startSending(ctx context.Context, accessURLs []entity.AccessURL) {
+func (s *Service) startSending(ctx context.Context, servers []entity.Server) {
 	const op = "service.startSending"
 
 	sendTicker := time.NewTicker(20 * time.Second)
@@ -83,13 +78,19 @@ func (s *Service) startSending(ctx context.Context, accessURLs []entity.AccessUR
 		case <-ctx.Done():
 			return
 		case <-sendTicker.C:
-			randIndex := rand.Intn(len(accessURLs))
+			randIndex := rand.Intn(len(servers))
 
-			if err := s.store.AddURL(ctx, accessURLs[randIndex]); err != nil {
+			accessURL, err := s.client.CreateAccessURL(servers[randIndex])
+			if err != nil {
+				log.Printf("%s: %s", op, err)
+				continue
+			}
+
+			if err := s.store.AddURL(ctx, accessURL); err != nil {
 				log.Printf("%s: %s", op, err)
 			}
 
-			msg := tgbotapi.NewMessage(s.channelID, accessURLs[randIndex].AccessKey)
+			msg := tgbotapi.NewMessage(s.channelID, accessURL.AccessKey)
 			if _, err := s.bot.Send(msg); err != nil {
 				log.Printf("%s: %s", op, err)
 			}

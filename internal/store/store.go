@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"telegram-bot/internal/entity"
 	"telegram-bot/internal/store/converter"
@@ -105,6 +107,30 @@ func (s *store) DeleteURL(ctx context.Context, id string) error {
 	return nil
 }
 
+// LastURLSentTime returns the creation time of the most recently added access URL.
+func (s *store) LastURLSentTime(ctx context.Context) (time.Time, error) {
+	const op = "store.LastURLSentTime"
+
+	rows, err := s.db.Query(ctx, "SELECT created_at FROM access_url ORDER BY created_at DESC LIMIT 1")
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return time.Time{}, nil
+		}
+
+		return time.Time{}, fmt.Errorf("%s: %w", op, err)
+	}
+	defer rows.Close()
+
+	var lastTime time.Time
+	for rows.Next() {
+		if err := rows.Scan(&lastTime); err != nil {
+			return time.Time{}, fmt.Errorf("%s: %w", op, err)
+		}
+	}
+
+	return lastTime, nil
+}
+
 // receiveAccessURLData select expired urls data from database.
 func (s *store) receiveAccessURLData(ctx context.Context) ([]model.AccessURL, error) {
 	const op = "store.receiveAccessURLData"
@@ -113,6 +139,9 @@ func (s *store) receiveAccessURLData(ctx context.Context) ([]model.AccessURL, er
 
 	rows, err := s.db.Query(ctx, "SELECT id, access_key, api_url FROM access_url WHERE $1 > expired_at", current)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 	defer rows.Close()
@@ -136,6 +165,9 @@ func (s *store) receiveServerData(ctx context.Context) ([]model.Server, error) {
 
 	rows, err := s.db.Query(ctx, "SELECT ip_address, port, key FROM servers WHERE is_active = $1 AND is_test = $2", true, true)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 	defer rows.Close()

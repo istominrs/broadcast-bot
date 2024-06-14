@@ -18,6 +18,7 @@ type store interface {
 	ExpiredURLs(context.Context) ([]entity.AccessURL, error)
 	AddURL(context.Context, entity.AccessURL) error
 	DeleteURL(context.Context, string) error
+	LastURLSentTime(context.Context) (time.Time, error)
 }
 
 type Service struct {
@@ -70,6 +71,16 @@ func (s *Service) StartBroadcast(ctx context.Context) error {
 func (s *Service) startSending(ctx context.Context, servers []entity.Server) {
 	const op = "service.startSending"
 
+	lastURLSentTime, err := s.store.LastURLSentTime(ctx)
+	if err != nil {
+		log.Printf("%s: %s", op, err)
+		return
+	}
+
+	if time.Since(lastURLSentTime) > 24*time.Hour {
+		s.sendAccessURL(ctx, servers)
+	}
+
 	sendTicker := time.NewTicker(24 * time.Hour)
 	defer sendTicker.Stop()
 
@@ -78,23 +89,35 @@ func (s *Service) startSending(ctx context.Context, servers []entity.Server) {
 		case <-ctx.Done():
 			return
 		case <-sendTicker.C:
-			randIndex := rand.Intn(len(servers))
-
-			accessURL, err := s.client.CreateAccessURL(servers[randIndex])
-			if err != nil {
-				log.Printf("%s: %s", op, err)
+			if len(servers) == 0 {
+				log.Println("[INFO] Servers are empty")
 				continue
 			}
 
-			if err := s.store.AddURL(ctx, accessURL); err != nil {
-				log.Printf("%s: %s", op, err)
-			}
-
-			msg := tgbotapi.NewMessage(s.channelID, accessURL.AccessKey)
-			if _, err := s.bot.Send(msg); err != nil {
-				log.Printf("%s: %s", op, err)
-			}
+			s.sendAccessURL(ctx, servers)
 		}
+	}
+}
+
+// sendAccessURL sends a new access URL to the telegram channel.
+func (s *Service) sendAccessURL(ctx context.Context, servers []entity.Server) {
+	const op = "service.sendAccessURL"
+
+	randIndex := rand.Intn(len(servers))
+
+	accessURL, err := s.client.CreateAccessURL(servers[randIndex])
+	if err != nil {
+		log.Printf("%s: %s", op, err)
+		return
+	}
+
+	if err := s.store.AddURL(ctx, accessURL); err != nil {
+		log.Printf("%s: %s", op, err)
+	}
+
+	msg := tgbotapi.NewMessage(s.channelID, accessURL.AccessKey)
+	if _, err := s.bot.Send(msg); err != nil {
+		log.Printf("%s: %s", op, err)
 	}
 }
 

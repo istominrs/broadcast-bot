@@ -115,13 +115,16 @@ func (s *Service) sendAccessURL(ctx context.Context, servers []entity.Server) {
 		log.Printf("%s: %s", op, err)
 	}
 
-	accessMessage :=
-		"🔑 Новый ключ на 48 часов\n" +
-			"🌍 Локация: Европа\n" +
-			"💡 Инструкция для подключения в закрепе\n\n" +
-			accessURL.AccessKey
+	accessMessage := fmt.Sprintf(
+		"🔑 Новый ключ на 48 часов\n"+
+			"🌍 Локация: Европа\n"+
+			"💡 Инструкция для подключения в закрепе\n\n"+
+			"<pre>%s</pre>",
+		accessURL.AccessKey,
+	)
 
 	msg := tgbotapi.NewMessage(s.channelID, accessMessage)
+	msg.ParseMode = "HTML"
 	if _, err := s.bot.Send(msg); err != nil {
 		log.Printf("%s: %s", op, err)
 	}

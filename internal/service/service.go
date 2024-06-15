@@ -115,7 +115,13 @@ func (s *Service) sendAccessURL(ctx context.Context, servers []entity.Server) {
 		log.Printf("%s: %s", op, err)
 	}
 
-	msg := tgbotapi.NewMessage(s.channelID, accessURL.AccessKey)
+	accessMessage :=
+		"🔑 Новый ключ на 48 часов\n" +
+			"🌍 Локация: Европа\n" +
+			"💡 Инструкция для подключения в закрепе\n\n" +
+			accessURL.AccessKey
+
+	msg := tgbotapi.NewMessage(s.channelID, accessMessage)
 	if _, err := s.bot.Send(msg); err != nil {
 		log.Printf("%s: %s", op, err)
 	}

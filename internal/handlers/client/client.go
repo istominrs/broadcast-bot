@@ -145,7 +145,7 @@ func createPostRequest() (model.Request, error) {
 		Password: generateRandomPassword(),
 		Port:     rand.Intn(60000),
 		Limit: model.DataLimit{
-			Bytes: 1024*1024*1024 * 100,
+			Bytes: 1024*1024*1024 * 100 * 1000 * 1000,
 		},
 	}
 

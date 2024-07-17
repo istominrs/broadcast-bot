@@ -38,6 +38,7 @@ func New(token string,
 
 	bot, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
+		log.Printf("%s: %s", op, err)
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
@@ -55,16 +56,35 @@ func (s *Service) StartBroadcast(ctx context.Context) error {
 
 	servers, err := s.store.Server(ctx)
 	if err != nil {
+		log.Printf("%s: %s", op, err)
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
-	go s.startSending(ctx, servers)
-	go s.startCleanup(ctx)
+	go s.safeStartSending(ctx, servers)
+	go s.safeStartCleanup(ctx)
 
 	// Wait until the context is done
 	<-ctx.Done()
 
 	return nil
+}
+
+func (s *Service) safeStartSending(ctx context.Context, servers []entity.Server) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("Recovered in safeStartSending: %v", r)
+		}
+	}()
+	s.startSending(ctx, servers)
+}
+
+func (s *Service) safeStartCleanup(ctx context.Context) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("Recovered in safeStartCleanup: %v", r)
+		}
+	}()
+	s.startCleanup(ctx)
 }
 
 // startSending handles the periodic sending of access URLs to the telegram channel.
@@ -79,6 +99,7 @@ func (s *Service) startSending(ctx context.Context, servers []entity.Server) {
 
 	if time.Since(lastURLSentTime) > 24*time.Hour {
 		s.sendAccessURL(ctx, servers)
+		log.Printf("First run, sent a new access URL")
 	}
 
 	sendTicker := time.NewTicker(24 * time.Hour)
@@ -95,6 +116,7 @@ func (s *Service) startSending(ctx context.Context, servers []entity.Server) {
 			}
 
 			s.sendAccessURL(ctx, servers)
+			log.Println("Sent a new access URL. Next key will be sent in 24 hours.")
 		}
 	}
 }
@@ -119,7 +141,7 @@ func (s *Service) sendAccessURL(ctx context.Context, servers []entity.Server) {
 		"🔑 Новый ключ на 48 часов\n"+
 			"🌍 Локация: Европа\n"+
 			"💡 Инструкция для подключения в закрепе\n\n"+
-			"<code>%s</code>",
+			"<pre>%s</pre>",
 		accessURL.AccessKey,
 	)
 
@@ -147,13 +169,19 @@ func (s *Service) startCleanup(ctx context.Context) {
 				log.Printf("%s: %s", op, err)
 			}
 
+			log.Printf("Found %d expired URLs", len(expiredURLs))
+
 			if err := s.client.RemoveAccessURLs(expiredURLs); err != nil {
 				log.Printf("%s: %s", op, err)
 			}
 
+			log.Println("Successfully removed expired URLs from the client")
+
 			for _, u := range expiredURLs {
 				if err := s.store.DeleteURL(ctx, u.ID); err != nil {
 					log.Printf("%s: %s", op, err)
+				} else {
+					log.Printf("Successfully deleted URL with ID %s from the store", u.ID)
 				}
 			}
 		}

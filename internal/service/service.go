@@ -141,7 +141,7 @@ func (s *Service) sendAccessURL(ctx context.Context, servers []entity.Server) {
 		"🔑 Новый ключ на 48 часов\n"+
 			"🌍 Локация: Европа\n"+
 			"💡 Инструкция для подключения в закрепе\n\n"+
-			"<pre>%s</pre>",
+			"<code>%s</code>",
 		accessURL.AccessKey,
 	)
 

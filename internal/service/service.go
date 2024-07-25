@@ -140,8 +140,10 @@ func (s *Service) sendAccessURL(ctx context.Context, servers []entity.Server) {
 	accessMessage := fmt.Sprintf(
 		"🔑 Новый ключ на 48 часов\n"+
 			"🌍 Локация: Европа\n"+
-			"💡 Инструкция для подключения в закрепе\n\n"+
-			"<code>%s</code>",
+			"💡 Инструкция - start.okbots.ru\n\n"+
+			"<code>%s</code>\n"+
+			"🚀<b>Купить премиум VPN со скоростью до 10 гб/с:</b>\n"+
+			"@okvpn_xbot",
 		accessURL.AccessKey,
 	)
 

@@ -197,7 +197,6 @@ func createPostRequest() (model.Request, error) {
 		},
 	}
 
-	log.Printf("Generated post request: %+v", req)
 	return req, nil
 }
 

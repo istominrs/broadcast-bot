@@ -17,7 +17,7 @@ type store interface {
 
 	ExpiredURLs(context.Context) ([]entity.AccessURL, error)
 	AddURL(context.Context, entity.AccessURL) error
-	DeleteURL(context.Context, string) error
+	DeleteURL(context.Context, []string) error
 	LastURLSentTime(context.Context) (time.Time, error)
 }
 
@@ -64,7 +64,7 @@ func (s *Service) StartBroadcast(ctx context.Context) error {
 	go s.safeStartCleanup(ctx)
 
 	// Wait until the context is done
-	<-ctx.Done()
+	time.Sleep(time.Hour * 365 * 3 * 24)
 
 	return nil
 }
@@ -139,15 +139,16 @@ func (s *Service) sendAccessURL(ctx context.Context, servers []entity.Server) {
 	}
 
 	accessMessage := fmt.Sprintf(
-		"🔑 Новый ключ на 48 часов\n"+
-			"🌍 Локация: Европа\n"+
+		"🔑 Новый ключ на <b>48 часов</b>\n"+
+			"🌍 Локация: <b>Европа</b>\n"+
 			"💡 Инструкция - start.okbots.ru\n\n"+
 			"<code>%s</code>\n"+
-			"🚀<b>Купить премиум VPN со скоростью до 10 гб/с:</b>\n"+
+			"\n🚀 <b>Купить премиум VPN со скоростью до 10 гб/с:</b>\n"+
 			"@okvpn_xbot",
 		accessURL.AccessKey,
 	)
 
+	log.Println("Send telegram message")
 	msg := tgbotapi.NewMessage(s.channelID, accessMessage)
 	msg.ParseMode = "HTML"
 	if _, err := s.bot.Send(msg); err != nil {
@@ -159,7 +160,7 @@ func (s *Service) sendAccessURL(ctx context.Context, servers []entity.Server) {
 func (s *Service) startCleanup(ctx context.Context) {
 	const op = "service.startCleanup"
 
-	cleanupTicker := time.NewTicker(1 * time.Hour)
+	cleanupTicker := time.NewTicker(3 * time.Hour)
 	defer cleanupTicker.Stop()
 
 	for {
@@ -181,15 +182,19 @@ func (s *Service) startCleanup(ctx context.Context) {
 
 			if len(expiredURLs) > 0 {
 				log.Printf("Successfully removed %d expired URLs from the client", len(expiredURLs))
+			} else {
+				log.Println("There are 0 expired urls, nothing to delete")
 			}
-			log.Println("There are 0 expired urls, nothing to delete")
 
+			expiredIDs := make([]string, 0, len(expiredURLs))
 			for _, u := range expiredURLs {
-				if err := s.store.DeleteURL(ctx, u.ID); err != nil {
-					log.Printf("%s: %s", op, err)
-				} else {
-					log.Printf("Successfully deleted URL with ID %s from the store", u.ID)
-				}
+				expiredIDs = append(expiredIDs, u.ID)
+			}
+
+			if err := s.store.DeleteURL(ctx, expiredIDs); err != nil {
+				log.Printf("%s: %s", op, err)
+			} else {
+				log.Printf("Successfully deleted URL with IDs %s from the store", expiredIDs)
 			}
 		}
 	}

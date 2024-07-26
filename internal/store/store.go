@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strconv"
 	"telegram-bot/internal/entity"
 	"telegram-bot/internal/store/converter"
 	"telegram-bot/internal/store/model"
@@ -78,6 +79,7 @@ func (s *store) AddURL(ctx context.Context, url entity.AccessURL) error {
 	log.Println("Adding new access URL")
 	data, err := converter.ToRepoFromAccessURL(url)
 	if err != nil {
+		log.Println("Error converting URL data:", err)
 		log.Printf("%s: %s", op, err)
 		return fmt.Errorf("%s: %w", op, err)
 	}
@@ -85,11 +87,20 @@ func (s *store) AddURL(ctx context.Context, url entity.AccessURL) error {
 	createdAt := time.Now()
 	expiredAt := createdAt.Add(time.Hour * 48)
 
-	_, err = s.db.Query(ctx, "INSERT INTO access_url (id, access_key, api_url, created_at, expired_at) VALUES ($1, $2, $3, $4, $5)",
-		data.ID, data.AccessKey, data.ApiURL, createdAt, expiredAt,
-	)
+	log.Println("Created 'expiredAt' and 'createdAt' variables:", createdAt, expiredAt)
+	log.Println("Executing insert query")
+
+	query := `
+		INSERT INTO access_url (id, access_key, api_url, created_at, expired_at) 
+		VALUES ($1, $2, $3, $4, $5)
+	`
+
+	log.Printf("Executing query: %s with values: %v, %v, %v, %v", query, data.ID, data.AccessKey, createdAt, expiredAt)
+
+	_, err = s.db.Exec(ctx, query, data.ID, data.AccessKey, data.ApiURL, createdAt, expiredAt)
 	if err != nil {
-		log.Printf("%s: %s", op, err)
+		log.Printf("%s: Error executing query: %s", op, err)
+		log.Println(err)
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
@@ -119,19 +130,39 @@ func (s *store) ExpiredURLs(ctx context.Context) ([]entity.AccessURL, error) {
 	return accessURLs, nil
 }
 
-// DeleteURL deletes URL from database.
-func (s *store) DeleteURL(ctx context.Context, id string) error {
+// DeleteURL deletes URLs from the database.
+func (s *store) DeleteURL(ctx context.Context, ids []string) error {
 	const op = "store.DeleteURL"
 	defer recoverPanic(op)
 
-	log.Printf("Deleting URL with ID: %s", id)
-	_, err := s.db.Query(ctx, "DELETE FROM access_url WHERE id = $1", id)
+	log.Printf("Deleting URLs with IDs: %v", ids)
+
+	if len(ids) == 0 {
+		log.Println("No IDs provided to delete")
+		return nil
+	}
+
+	// Convert string IDs to integer IDs
+	intIDs := make([]int, len(ids))
+	for i, idStr := range ids {
+		id, err := strconv.Atoi(idStr)
+		if err != nil {
+			log.Printf("%s: invalid ID %s: %v", op, idStr, err)
+			return fmt.Errorf("%s: invalid ID %s: %w", op, idStr, err)
+		}
+		intIDs[i] = id
+	}
+
+	// Create the query with the correct number of placeholders
+	query := "DELETE FROM access_url WHERE id = ANY($1::int[])"
+
+	_, err := s.db.Exec(ctx, query, intIDs)
 	if err != nil {
 		log.Printf("%s: %s", op, err)
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
-	log.Println("Deleted URL successfully")
+	log.Println("Deleted URLs successfully")
 	return nil
 }
 

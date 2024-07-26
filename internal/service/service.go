@@ -108,6 +108,7 @@ func (s *Service) startSending(ctx context.Context, servers []entity.Server) {
 	for {
 		select {
 		case <-ctx.Done():
+			log.Println("Context done, stopping startSending")
 			return
 		case <-sendTicker.C:
 			if len(servers) == 0 {
@@ -140,8 +141,10 @@ func (s *Service) sendAccessURL(ctx context.Context, servers []entity.Server) {
 	accessMessage := fmt.Sprintf(
 		"🔑 Новый ключ на 48 часов\n"+
 			"🌍 Локация: Европа\n"+
-			"💡 Инструкция для подключения в закрепе\n\n"+
-			"<code>%s</code>",
+			"💡 Инструкция - start.okbots.ru\n\n"+
+			"<code>%s</code>\n"+
+			"🚀<b>Купить премиум VPN со скоростью до 10 гб/с:</b>\n"+
+			"@okvpn_xbot",
 		accessURL.AccessKey,
 	)
 
@@ -162,6 +165,7 @@ func (s *Service) startCleanup(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			log.Println("Context done, stopping startCleanup")
 			return
 		case <-cleanupTicker.C:
 			expiredURLs, err := s.store.ExpiredURLs(ctx)
@@ -175,7 +179,10 @@ func (s *Service) startCleanup(ctx context.Context) {
 				log.Printf("%s: %s", op, err)
 			}
 
-			log.Println("Successfully removed expired URLs from the client")
+			if len(expiredURLs) > 0 {
+				log.Printf("Successfully removed %d expired URLs from the client", len(expiredURLs))
+			}
+			log.Println("There are 0 expired urls, nothing to delete")
 
 			for _, u := range expiredURLs {
 				if err := s.store.DeleteURL(ctx, u.ID); err != nil {

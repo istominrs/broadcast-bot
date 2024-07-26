@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"telegram-bot/internal/entity"
 	"telegram-bot/internal/store/converter"
 	"telegram-bot/internal/store/model"
@@ -22,22 +23,35 @@ func New(dsn string) (*store, error) {
 
 	db, err := pgxpool.New(context.Background(), dsn)
 	if err != nil {
+		log.Printf("%s: %s", op, err)
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
+	log.Printf("%s: database connection established", op)
 	return &store{db: db}, nil
 }
 
 func (s *store) Close() {
 	s.db.Close()
+	log.Println("store.Close: database connection closed")
+}
+
+// recoverPanic logs and recovers from panic
+func recoverPanic(op string) {
+	if r := recover(); r != nil {
+		log.Printf("%s: recovered from panic: %v", op, r)
+	}
 }
 
 // Server returns server data.
 func (s *store) Server(ctx context.Context) ([]entity.Server, error) {
 	const op = "store.Server"
+	defer recoverPanic(op)
 
+	log.Println("Fetching server data")
 	data, err := s.receiveServerData(ctx)
 	if err != nil {
+		log.Printf("%s: %s", op, err)
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
@@ -45,21 +59,26 @@ func (s *store) Server(ctx context.Context) ([]entity.Server, error) {
 	for _, d := range data {
 		server, err := converter.ToServerFromRepo(d)
 		if err != nil {
+			log.Printf("%s: %s", op, err)
 			return nil, fmt.Errorf("%s: %w", op, err)
 		}
 
 		servers = append(servers, server)
 	}
 
+	log.Println("Fetched server data successfully")
 	return servers, nil
 }
 
-// AddURL add access url in database.
+// AddURL adds access URL to database.
 func (s *store) AddURL(ctx context.Context, url entity.AccessURL) error {
 	const op = "store.AddURL"
+	defer recoverPanic(op)
 
+	log.Println("Adding new access URL")
 	data, err := converter.ToRepoFromAccessURL(url)
 	if err != nil {
+		log.Printf("%s: %s", op, err)
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
@@ -70,53 +89,66 @@ func (s *store) AddURL(ctx context.Context, url entity.AccessURL) error {
 		data.ID, data.AccessKey, data.ApiURL, createdAt, expiredAt,
 	)
 	if err != nil {
+		log.Printf("%s: %s", op, err)
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
+	log.Println("Added new access URL successfully")
 	return nil
 }
 
-// ExpiredURLs recieve expired urls data.
+// ExpiredURLs receives expired URLs data.
 func (s *store) ExpiredURLs(ctx context.Context) ([]entity.AccessURL, error) {
 	const op = "store.ExpiredURLs"
+	defer recoverPanic(op)
 
+	log.Println("Fetching expired URLs")
 	data, err := s.receiveAccessURLData(ctx)
 	if err != nil {
+		log.Printf("%s: %s", op, err)
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
 	accessURLs := make([]entity.AccessURL, 0, len(data))
 	for _, d := range data {
 		accessURL := converter.ToAccessURLFromRepo(d)
-
 		accessURLs = append(accessURLs, accessURL)
 	}
 
+	log.Println("Fetched expired URLs successfully")
 	return accessURLs, nil
 }
 
-// DeleteURL deletes url from database.
+// DeleteURL deletes URL from database.
 func (s *store) DeleteURL(ctx context.Context, id string) error {
 	const op = "store.DeleteURL"
+	defer recoverPanic(op)
 
+	log.Printf("Deleting URL with ID: %s", id)
 	_, err := s.db.Query(ctx, "DELETE FROM access_url WHERE id = $1", id)
 	if err != nil {
+		log.Printf("%s: %s", op, err)
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
+	log.Println("Deleted URL successfully")
 	return nil
 }
 
 // LastURLSentTime returns the creation time of the most recently added access URL.
 func (s *store) LastURLSentTime(ctx context.Context) (time.Time, error) {
 	const op = "store.LastURLSentTime"
+	defer recoverPanic(op)
 
+	log.Println("Fetching the last URL sent time")
 	rows, err := s.db.Query(ctx, "SELECT created_at FROM access_url ORDER BY created_at DESC LIMIT 1")
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			log.Println("No URLs found")
 			return time.Time{}, nil
 		}
 
+		log.Printf("%s: %s", op, err)
 		return time.Time{}, fmt.Errorf("%s: %w", op, err)
 	}
 	defer rows.Close()
@@ -124,24 +156,29 @@ func (s *store) LastURLSentTime(ctx context.Context) (time.Time, error) {
 	var lastTime time.Time
 	for rows.Next() {
 		if err := rows.Scan(&lastTime); err != nil {
+			log.Printf("%s: %s", op, err)
 			return time.Time{}, fmt.Errorf("%s: %w", op, err)
 		}
 	}
 
+	log.Printf("Fetched the last URL sent time: %v", lastTime)
 	return lastTime, nil
 }
 
-// receiveAccessURLData select expired urls data from database.
+// receiveAccessURLData selects expired URLs data from database.
 func (s *store) receiveAccessURLData(ctx context.Context) ([]model.AccessURL, error) {
 	const op = "store.receiveAccessURLData"
+	defer recoverPanic(op)
 
 	current := time.Now()
-
+	log.Println("Fetching expired access URLs")
 	rows, err := s.db.Query(ctx, "SELECT id, access_key, api_url FROM access_url WHERE $1 > expired_at", current)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			log.Println("No expired URLs found")
 			return nil, nil
 		}
+		log.Printf("%s: %s", op, err)
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 	defer rows.Close()
@@ -150,24 +187,30 @@ func (s *store) receiveAccessURLData(ctx context.Context) ([]model.AccessURL, er
 	for rows.Next() {
 		var accessURL model.AccessURL
 		if err := rows.Scan(&accessURL.ID, &accessURL.AccessKey, &accessURL.ApiURL); err != nil {
+			log.Printf("%s: %s", op, err)
 			return nil, fmt.Errorf("%s: %w", op, err)
 		}
 
 		accessURLs = append(accessURLs, accessURL)
 	}
 
+	log.Println("Fetched expired access URLs successfully")
 	return accessURLs, nil
 }
 
-// receiveServerData select server data from database.
+// receiveServerData selects server data from database.
 func (s *store) receiveServerData(ctx context.Context) ([]model.Server, error) {
 	const op = "store.receiveServerData"
+	defer recoverPanic(op)
 
+	log.Println("Fetching server data")
 	rows, err := s.db.Query(ctx, "SELECT ip_address, port, key FROM servers WHERE is_active = $1 AND is_test = $2", true, true)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			log.Println("No servers found")
 			return nil, nil
 		}
+		log.Printf("%s: %s", op, err)
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 	defer rows.Close()
@@ -176,11 +219,13 @@ func (s *store) receiveServerData(ctx context.Context) ([]model.Server, error) {
 	for rows.Next() {
 		var server model.Server
 		if err := rows.Scan(&server.IPAddr, &server.Port, &server.Key); err != nil {
+			log.Printf("%s: %s", op, err)
 			return nil, fmt.Errorf("%s: %w", op, err)
 		}
 
 		servers = append(servers, server)
 	}
 
+	log.Println("Fetched server data successfully")
 	return servers, nil
 }

@@ -15,11 +15,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type store struct {
+type Store struct {
 	db *pgxpool.Pool
 }
 
-func New(dsn string) (*store, error) {
+func New(dsn string) (*Store, error) {
 	const op = "store.New"
 
 	db, err := pgxpool.New(context.Background(), dsn)
@@ -29,10 +29,10 @@ func New(dsn string) (*store, error) {
 	}
 
 	log.Printf("%s: database connection established", op)
-	return &store{db: db}, nil
+	return &Store{db: db}, nil
 }
 
-func (s *store) Close() {
+func (s *Store) Close() {
 	s.db.Close()
 	log.Println("store.Close: database connection closed")
 }
@@ -45,7 +45,7 @@ func recoverPanic(op string) {
 }
 
 // Server returns server data.
-func (s *store) Server(ctx context.Context) ([]entity.Server, error) {
+func (s *Store) Server(ctx context.Context) ([]entity.Server, error) {
 	const op = "store.Server"
 	defer recoverPanic(op)
 
@@ -72,7 +72,7 @@ func (s *store) Server(ctx context.Context) ([]entity.Server, error) {
 }
 
 // AddURL adds access URL to database.
-func (s *store) AddURL(ctx context.Context, url entity.AccessURL) error {
+func (s *Store) AddURL(ctx context.Context, url entity.AccessURL) error {
 	const op = "store.AddURL"
 	defer recoverPanic(op)
 
@@ -109,7 +109,7 @@ func (s *store) AddURL(ctx context.Context, url entity.AccessURL) error {
 }
 
 // ExpiredURLs receives expired URLs data.
-func (s *store) ExpiredURLs(ctx context.Context) ([]entity.AccessURL, error) {
+func (s *Store) ExpiredURLs(ctx context.Context) ([]entity.AccessURL, error) {
 	const op = "store.ExpiredURLs"
 	defer recoverPanic(op)
 
@@ -131,7 +131,7 @@ func (s *store) ExpiredURLs(ctx context.Context) ([]entity.AccessURL, error) {
 }
 
 // DeleteURL deletes URLs from the database.
-func (s *store) DeleteURL(ctx context.Context, ids []string) error {
+func (s *Store) DeleteURL(ctx context.Context, ids []string) error {
 	const op = "store.DeleteURL"
 	defer recoverPanic(op)
 
@@ -167,7 +167,7 @@ func (s *store) DeleteURL(ctx context.Context, ids []string) error {
 }
 
 // LastURLSentTime returns the creation time of the most recently added access URL.
-func (s *store) LastURLSentTime(ctx context.Context) (time.Time, error) {
+func (s *Store) LastURLSentTime(ctx context.Context) (time.Time, error) {
 	const op = "store.LastURLSentTime"
 	defer recoverPanic(op)
 
@@ -197,7 +197,7 @@ func (s *store) LastURLSentTime(ctx context.Context) (time.Time, error) {
 }
 
 // receiveAccessURLData selects expired URLs data from database.
-func (s *store) receiveAccessURLData(ctx context.Context) ([]model.AccessURL, error) {
+func (s *Store) receiveAccessURLData(ctx context.Context) ([]model.AccessURL, error) {
 	const op = "store.receiveAccessURLData"
 	defer recoverPanic(op)
 
@@ -230,7 +230,7 @@ func (s *store) receiveAccessURLData(ctx context.Context) ([]model.AccessURL, er
 }
 
 // receiveServerData selects server data from database.
-func (s *store) receiveServerData(ctx context.Context) ([]model.Server, error) {
+func (s *Store) receiveServerData(ctx context.Context) ([]model.Server, error) {
 	const op = "store.receiveServerData"
 	defer recoverPanic(op)
 

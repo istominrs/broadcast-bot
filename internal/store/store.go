@@ -235,7 +235,7 @@ func (s *store) receiveServerData(ctx context.Context) ([]model.Server, error) {
 	defer recoverPanic(op)
 
 	log.Println("Fetching server data")
-	rows, err := s.db.Query(ctx, "SELECT ip_address, port, key FROM servers WHERE is_active = $1 AND is_test = $2", true, true)
+	rows, err := s.db.Query(ctx, "SELECT ip_address, port, server_key FROM servers WHERE is_active = $1 AND is_test = $2 AND protocol = $3", true, true, "shadowsocks")
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			log.Println("No servers found")
@@ -256,7 +256,7 @@ func (s *store) receiveServerData(ctx context.Context) ([]model.Server, error) {
 
 		servers = append(servers, server)
 	}
-
+	log.Println(servers)
 	log.Println("Fetched server data successfully")
 	return servers, nil
 }

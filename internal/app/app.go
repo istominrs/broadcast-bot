@@ -12,7 +12,7 @@ import (
 func Run() {
 	cfg := config.MustLoad()
 
-	store, err := store.New(cfg.DSN)
+	store, err := store.New("postgres://username:password@localhost:5432/postgres?sslmode=disable")
 	if err != nil {
 		log.Fatal("failed to init store", err)
 	}

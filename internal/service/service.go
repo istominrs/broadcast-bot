@@ -60,6 +60,10 @@ func (s *Service) StartBroadcast(ctx context.Context) error {
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
+	for _, server := range servers {
+		log.Println(server.IPAddr)
+	}
+
 	go s.safeStartSending(ctx, servers)
 	go s.safeStartCleanup(ctx)
 

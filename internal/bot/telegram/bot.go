@@ -18,6 +18,7 @@ const (
 type Service interface {
 	AccessKey(ctx context.Context) (string, error)
 	DeleteExpiredAccessKeys(ctx context.Context) error
+	IsKeySent(ctx context.Context) (bool, error)
 }
 
 type Bot struct {
@@ -105,8 +106,22 @@ func (b *Bot) Start(ctx context.Context) error {
 }
 
 func (b *Bot) startLoop(ctx context.Context) {
-	checkTicker := time.NewTicker(3 * time.Minute)
-	sendTicker := time.NewTicker(1 * time.Minute)
+	isKeySent, err := b.service.IsKeySent(ctx)
+	if err != nil {
+		b.log.Error("failed to check if key sent", sl.Err(err))
+	}
+
+	if !isKeySent {
+		b.log.Info("key not sent, attempting to send access key")
+		if err := b.sendMessage(ctx); err != nil {
+			b.log.Error("failed to send access key", sl.Err(err))
+		}
+
+		b.log.Info("key sent")
+	}
+
+	checkTicker := time.NewTicker(5 * time.Hour)
+	sendTicker := time.NewTicker(24 * time.Hour)
 	defer checkTicker.Stop()
 	defer sendTicker.Stop()
 

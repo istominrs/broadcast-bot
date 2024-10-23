@@ -150,3 +150,25 @@ func (s *Service) DeleteExpiredAccessKeys(ctx context.Context) error {
 
 	return nil
 }
+
+func (s *Service) IsKeySent(ctx context.Context) (bool, error) {
+	const op = "service.IsKeySent"
+
+	log := s.log.With(slog.String("op", op))
+
+	log.Info("attempting to check if key has been sent")
+
+	t, err := s.repository.AccessKeyTime(ctx)
+	if err != nil {
+		log.Error("failed to get access key time", sl.Err(err))
+
+		return true, fmt.Errorf("%s: %w", op, err)
+	}
+
+	if time.Since(t) > 23*time.Hour {
+		log.Info("the access key has not been sent in the last 24 hours")
+		return false, nil
+	}
+
+	return true, nil
+}

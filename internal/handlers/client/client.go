@@ -139,7 +139,7 @@ func (c *Client) DeleteAccessKeys(accessKeys []models.AccessKey) error {
 	for _, accessKey := range accessKeys {
 		log.Info("attempting to delete access key", slog.String("access_key", accessKey.Key))
 
-		req, err := http.NewRequest(http.MethodDelete, accessKey.ApiURL, nil)
+		req, err := http.NewRequest(http.MethodDelete, fmt.Sprintf("%s/%d", accessKey.ApiURL, accessKey.KeyID), nil)
 		if err != nil {
 			log.Error("failed to create request", sl.Err(err))
 

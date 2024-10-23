@@ -1,7 +1,5 @@
 CREATE DATABASE IF NOT EXISTS freekeys;
 
-\c freekeys;
-
 CREATE TABLE IF NOT EXISTS servers (
     uuid UUID NOT NULL PRIMARY KEY,
     ip_address TEXT NOT NULL UNIQUE,
@@ -12,6 +10,7 @@ CREATE TABLE IF NOT EXISTS servers (
 
 CREATE TABLE IF NOT EXISTS access_keys (
     uuid UUID NOT NULL PRIMARY KEY,
+    key_id INTEGER NOT NULL,
     key TEXT NOT NULL,
     api_url TEXT NOT NULL,
     created_at TIMESTAMP NOT NULL,

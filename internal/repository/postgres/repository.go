@@ -57,12 +57,22 @@ func (r *Repository) Server(ctx context.Context) (models.Server, error) {
 func (r *Repository) SaveAccessKey(ctx context.Context, accessKey models.AccessKey) error {
 	const op = "repository.SaveAccessKey"
 
-	createdAt := time.Now()
-	expiredAt := createdAt.Add(time.Hour * 48)
+	query := "INSERT INTO access_keys (uuid, key_id, key, api_url, created_at, expired_at) VALUES ($1, $2, $3, $4, $5, $6)"
 
-	query := "INSERT INTO access_keys (uuid, key, api_url, created_at, expired_at) VALUES ($1, $2, $3, $4, $5)"
+	_, err := r.pool.Exec(
+		ctx,
+		query,
+		uuid.New(),
+		accessKey.KeyID,
+		accessKey.Key,
+		accessKey.ApiURL,
+		accessKey.CreatedAt,
+		accessKey.ExpiredAt,
+	)
 
-	_ = r.pool.QueryRow(ctx, query, uuid.New(), accessKey.Key, accessKey.ApiURL, createdAt, expiredAt)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
 
 	return nil
 }
@@ -74,7 +84,10 @@ func (r *Repository) DeleteAccessKeys(ctx context.Context, uuids []uuid.UUID) er
 		return nil
 	}
 
-	_ = r.pool.QueryRow(ctx, "DELETE FROM access_keys WHERE uuid = ANY($1::uuid[])", uuids)
+	_, err := r.pool.Exec(ctx, "DELETE FROM access_keys WHERE uuid = ANY($1::uuid[])", uuids)
+	if err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
 
 	return nil
 }
@@ -111,11 +124,18 @@ func (r *Repository) ExpiredAccessKeys(ctx context.Context) ([]models.AccessKey,
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 	defer rows.Close()
-	
+
 	var accessKeys []models.AccessKey
 	for rows.Next() {
 		var accessKey models.AccessKey
-		err := rows.Scan(&accessKey.UUID, &accessKey.Key, &accessKey.ApiURL, &accessKey.CreatedAt, &accessKey.ExpiredAt)
+		err := rows.Scan(
+			&accessKey.UUID,
+			&accessKey.KeyID,
+			&accessKey.Key,
+			&accessKey.ApiURL,
+			&accessKey.CreatedAt,
+			&accessKey.ExpiredAt,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", op, err)
 		}

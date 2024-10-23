@@ -99,12 +99,14 @@ func (b *Bot) Start(ctx context.Context) error {
 
 	log.Info("telegram bot started")
 
+	<-ctx.Done()
+
 	return nil
 }
 
 func (b *Bot) startLoop(ctx context.Context) {
-	checkTicker := time.NewTicker(7 * time.Hour)
-	sendTicker := time.NewTicker(24 * time.Hour)
+	checkTicker := time.NewTicker(3 * time.Minute)
+	sendTicker := time.NewTicker(1 * time.Minute)
 	defer checkTicker.Stop()
 	defer sendTicker.Stop()
 

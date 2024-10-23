@@ -6,12 +6,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/brianvoe/gofakeit"
+	"github.com/google/uuid"
 	"log/slog"
 	"math/rand"
 	"net/http"
+	"strconv"
 	"telegram-bot/internal/domain/models"
 	"telegram-bot/internal/errors"
 	"telegram-bot/pkg/logger/sl"
+	"time"
 )
 
 type Client struct {
@@ -106,14 +109,25 @@ func (c *Client) CreateAccessKey(server models.Server) (models.AccessKey, error)
 		return models.AccessKey{}, fmt.Errorf("%s: %w", op, err)
 	}
 
-	var accessKey models.AccessKey
-	if err := json.NewDecoder(resp.Body).Decode(&accessKey); err != nil {
+	var response models.Response
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 		log.Error("failed to decode response body", sl.Err(err))
 
 		return models.AccessKey{}, fmt.Errorf("%s: %w", op, err)
 	}
 
-	log.Info("access key created successfully", slog.String("access_key", accessKey.Key))
+	log.Info("access key created successfully", slog.String("access_key", response.AccessKey))
+
+	keyID, _ := strconv.Atoi(response.ID)
+	accessKey := models.AccessKey{
+		UUID:      uuid.New(),
+		KeyID:     keyID,
+		Key:       response.AccessKey,
+		ApiURL:    url,
+		CreatedAt: time.Now(),
+		ExpiredAt: time.Now().Add(48 * time.Hour),
+	}
+
 	return accessKey, nil
 }
 

@@ -7,6 +7,7 @@ import (
 
 type AccessKey struct {
 	UUID      uuid.UUID
+	KeyID     int
 	Key       string
 	ApiURL    string
 	CreatedAt time.Time

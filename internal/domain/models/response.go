@@ -6,5 +6,5 @@ type Response struct {
 	Password  string `json:"password"`
 	Port      int    `json:"port"`
 	Method    string `json:"method"`
-	AccessURL string `json:"accessUrl"`
+	AccessKey string `json:"accessUrl"`
 }

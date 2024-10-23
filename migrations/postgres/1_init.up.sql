@@ -1,7 +1,18 @@
-CREATE TABLE IF NOT EXISTS access_url (
-	id INTEGER NOT NULL UNIQUE,
-	access_key TEXT NOT NULL,
-	api_url TEXT NOT NULL,
-	created_at TIMESTAMP NOT NULL,
-	expired_at TIMESTAMP NOT NULL
+CREATE DATABASE IF NOT EXISTS freekeys;
+
+CREATE TABLE IF NOT EXISTS servers (
+    uuid UUID NOT NULL PRIMARY KEY,
+    ip_address TEXT NOT NULL UNIQUE,
+    port INTEGER NOT NULL,
+    key TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE
+);
+
+CREATE TABLE IF NOT EXISTS access_keys (
+    uuid UUID NOT NULL PRIMARY KEY,
+    key_id INTEGER NOT NULL,
+    key TEXT NOT NULL,
+    api_url TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL,
+    expired_at TIMESTAMP NOT NULL
 );

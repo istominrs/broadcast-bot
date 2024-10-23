@@ -2,29 +2,55 @@ package app
 
 import (
 	"context"
-	"log"
+	"log/slog"
+	"os"
+	"telegram-bot/internal/bot/telegram"
 	"telegram-bot/internal/config"
 	"telegram-bot/internal/handlers/client"
+	"telegram-bot/internal/repository/postgres"
 	"telegram-bot/internal/service"
-	"telegram-bot/internal/store"
 )
 
 func Run() {
 	cfg := config.MustLoad()
 
-	store, err := store.New(cfg.DSN)
+	log := slog.New(
+		slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}),
+	)
+
+	repository, err := postgres.New(cfg.DSN)
 	if err != nil {
-		log.Fatal("failed to init store", err)
+		panic(err)
 	}
 
-	client := client.New()
-
-	service, err := service.New(cfg.Token, cfg.ChannelID, client, store)
+	c, err := client.New(
+		client.WithLogger(log),
+		client.WithClient(),
+	)
 	if err != nil {
-		log.Fatal("failed to start telegram bot", err)
+		panic(err)
 	}
 
-	if err := service.StartBroadcast(context.Background()); err != nil {
-		log.Fatal("failed to start broadcast", err)
+	svc, err := service.New(
+		service.WithLogger(log),
+		service.WithClient(c),
+		service.WithRepository(repository),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	bot, err := telegram.New(
+		telegram.WithToken(cfg.Token),
+		telegram.WithLogger(log),
+		telegram.WithService(svc),
+		telegram.WithChatID(cfg.ChannelID),
+	)
+	if err != nil {
+		panic(err)
+	}
+
+	if err := bot.Start(context.Background()); err != nil {
+		panic(err)
 	}
 }

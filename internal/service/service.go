@@ -3,203 +3,172 @@ package service
 import (
 	"context"
 	"fmt"
-	"log"
-	"math/rand"
-	"telegram-bot/internal/entity"
+	"github.com/google/uuid"
+	"log/slog"
+	"telegram-bot/internal/domain/models"
+	"telegram-bot/internal/errors"
 	"telegram-bot/internal/handlers/client"
+	"telegram-bot/pkg/logger/sl"
 	"time"
-
-	tgbotapi "github.com/Syfaro/telegram-bot-api"
 )
 
-type store interface {
-	Server(context.Context) ([]entity.Server, error)
+type Repository interface {
+	Server(ctx context.Context) (models.Server, error)
 
-	ExpiredURLs(context.Context) ([]entity.AccessURL, error)
-	AddURL(context.Context, entity.AccessURL) error
-	DeleteURL(context.Context, []string) error
-	LastURLSentTime(context.Context) (time.Time, error)
+	SaveAccessKey(ctx context.Context, accessKey models.AccessKey) error
+	DeleteAccessKeys(ctx context.Context, uuids []uuid.UUID) error
+	AccessKeyTime(ctx context.Context) (time.Time, error)
+	ExpiredAccessKeys(ctx context.Context) ([]models.AccessKey, error)
 }
 
 type Service struct {
-	bot       *tgbotapi.BotAPI
-	channelID int64
-
-	client *client.Client
-	store  store
+	log        *slog.Logger
+	client     *client.Client
+	repository Repository
 }
 
-func New(token string,
-	channelID int64,
-	client *client.Client,
-	store store,
-) (*Service, error) {
+type Options func(*Service)
+
+func WithLogger(log *slog.Logger) Options {
+	return func(service *Service) {
+		service.log = log
+	}
+}
+
+func WithClient(client *client.Client) Options {
+	return func(service *Service) {
+		service.client = client
+	}
+}
+
+func WithRepository(repository Repository) Options {
+	return func(service *Service) {
+		service.repository = repository
+	}
+}
+
+func New(opts ...Options) (*Service, error) {
 	const op = "service.New"
 
-	bot, err := tgbotapi.NewBotAPI(token)
+	svc := new(Service)
+
+	for _, opt := range opts {
+		opt(svc)
+	}
+
+	if svc.client == nil {
+		return nil, fmt.Errorf("%s: %w", op, errors.ErrNoClientProvided)
+	}
+
+	if svc.repository == nil {
+		return nil, fmt.Errorf("%s: %w", op, errors.ErrNoRepositoryProvided)
+	}
+
+	if svc.log == nil {
+		return nil, fmt.Errorf("%s: %w", op, errors.ErrNoLoggerProvided)
+	}
+
+	return svc, nil
+}
+
+func (s *Service) AccessKey(ctx context.Context) (string, error) {
+	const op = "service.AccessKey"
+
+	log := s.log.With(slog.String("op", op))
+
+	log.Info("attempting to get random server")
+
+	server, err := s.repository.Server(ctx)
 	if err != nil {
-		log.Printf("%s: %s", op, err)
-		return nil, fmt.Errorf("%s: %w", op, err)
+		log.Error("failed to get random server", sl.Err(err))
+
+		return "", fmt.Errorf("%s: %w", op, err)
 	}
 
-	return &Service{
-		bot:       bot,
-		channelID: channelID,
-		client:    client,
-		store:     store,
-	}, nil
-}
+	log.Info("got random server")
 
-// StartBroadcast starts telegram channel broadcast.
-func (s *Service) StartBroadcast(ctx context.Context) error {
-	const op = "service.StartBroadcast"
-
-	servers, err := s.store.Server(ctx)
+	log.Info("attempting to get access key")
+	accessKey, err := s.client.CreateAccessKey(server)
 	if err != nil {
-		log.Printf("%s: %s", op, err)
-		return fmt.Errorf("%s: %w", op, err)
+		log.Error("failed to get access key", sl.Err(err))
+
+		return "", fmt.Errorf("%s: %w", op, err)
 	}
 
-	for _, server := range servers {
-		log.Println(server.IPAddr)
+	log.Info("got access key")
+
+	if err := s.repository.SaveAccessKey(ctx, accessKey); err != nil {
+		log.Error("failed to save access key", sl.Err(err))
+
+		return "", fmt.Errorf("%s: %w", op, err)
 	}
 
-	go s.safeStartSending(ctx, servers)
-	go s.safeStartCleanup(ctx)
+	log.Info("successfully saved access key")
 
-	// Wait until the context is done
-	time.Sleep(time.Hour * 365 * 3 * 24)
-
-	return nil
-}
-
-func (s *Service) safeStartSending(ctx context.Context, servers []entity.Server) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("Recovered in safeStartSending: %v", r)
-		}
-	}()
-	s.startSending(ctx, servers)
-}
-
-func (s *Service) safeStartCleanup(ctx context.Context) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("Recovered in safeStartCleanup: %v", r)
-		}
-	}()
-	s.startCleanup(ctx)
-}
-
-// startSending handles the periodic sending of access URLs to the telegram channel.
-func (s *Service) startSending(ctx context.Context, servers []entity.Server) {
-	const op = "service.startSending"
-
-	lastURLSentTime, err := s.store.LastURLSentTime(ctx)
-	if err != nil {
-		log.Printf("%s: %s", op, err)
-		return
-	}
-
-	if time.Since(lastURLSentTime) > 24*time.Hour {
-		s.sendAccessURL(ctx, servers)
-		log.Printf("First run, sent a new access URL")
-	}
-
-	sendTicker := time.NewTicker(24 * time.Hour)
-	defer sendTicker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			log.Println("Context done, stopping startSending")
-			return
-		case <-sendTicker.C:
-			if len(servers) == 0 {
-				log.Println("[INFO] Servers are empty")
-				continue
-			}
-
-			s.sendAccessURL(ctx, servers)
-			log.Println("Sent a new access URL. Next key will be sent in 24 hours.")
-		}
-	}
-}
-
-// sendAccessURL sends a new access URL to the telegram channel.
-func (s *Service) sendAccessURL(ctx context.Context, servers []entity.Server) {
-	const op = "service.sendAccessURL"
-
-	randIndex := rand.Intn(len(servers))
-
-	accessURL, err := s.client.CreateAccessURL(servers[randIndex])
-	if err != nil {
-		log.Printf("%s: %s", op, err)
-		return
-	}
-
-	if err := s.store.AddURL(ctx, accessURL); err != nil {
-		log.Printf("%s: %s", op, err)
-	}
-
-	accessMessage := fmt.Sprintf(
+	msg := fmt.Sprintf(
 		"🔑 Новый ключ на <b>48 часов</b>\n"+
 			"🌍 Локация: <b>Европа</b>\n"+
 			"💡 Инструкция - start.okbots.ru\n\n"+
 			"<code>%s</code>\n"+
 			"\n🚀 <b>Купить премиум VPN со скоростью до 10 гб/с:</b>\n"+
 			"@okvpn_xbot",
-		accessURL.AccessKey,
+		accessKey.Key,
 	)
 
-	log.Println("Send telegram message")
-	msg := tgbotapi.NewMessage(s.channelID, accessMessage)
-	msg.ParseMode = "HTML"
-	if _, err := s.bot.Send(msg); err != nil {
-		log.Printf("%s: %s", op, err)
-	}
+	return msg, nil
 }
 
-// startCleanup handles the periodic cleanup of expired access URLs.
-func (s *Service) startCleanup(ctx context.Context) {
-	const op = "service.startCleanup"
+func (s *Service) DeleteExpiredAccessKeys(ctx context.Context) error {
+	const op = "service.DeleteExpiredAccessKeys"
 
-	cleanupTicker := time.NewTicker(3 * time.Hour)
-	defer cleanupTicker.Stop()
+	log := s.log.With(slog.String("op", op))
 
-	for {
-		select {
-		case <-ctx.Done():
-			log.Println("Context done, stopping startCleanup")
-			return
-		case <-cleanupTicker.C:
-			expiredURLs, err := s.store.ExpiredURLs(ctx)
-			if err != nil {
-				log.Printf("%s: %s", op, err)
-			}
+	log.Info("attempting to receive expired access keys")
+	expiredKeys, err := s.repository.ExpiredAccessKeys(ctx)
+	if err != nil {
+		log.Error("failed to get expired access keys", sl.Err(err))
 
-			log.Printf("Found %d expired URLs", len(expiredURLs))
-
-			if err := s.client.RemoveAccessURLs(expiredURLs); err != nil {
-				log.Printf("%s: %s", op, err)
-			}
-
-			if len(expiredURLs) > 0 {
-				log.Printf("Successfully removed %d expired URLs from the client", len(expiredURLs))
-			} else {
-				log.Println("There are 0 expired urls, nothing to delete")
-			}
-
-			expiredIDs := make([]string, 0, len(expiredURLs))
-			for _, u := range expiredURLs {
-				expiredIDs = append(expiredIDs, u.ID)
-			}
-
-			if err := s.store.DeleteURL(ctx, expiredIDs); err != nil {
-				log.Printf("%s: %s", op, err)
-			} else {
-				log.Printf("Successfully deleted URL with IDs %s from the store", expiredIDs)
-			}
-		}
+		return fmt.Errorf("%s: %w", op, err)
 	}
+
+	log.Info("got expired access keys")
+
+	if len(expiredKeys) == 0 {
+		log.Info("no expired access keys")
+		return nil
+	}
+
+	log.Info("attempting to delete expired access keys")
+
+	if err := s.client.DeleteAccessKeys(expiredKeys); err != nil {
+		log.Error("failed to delete expired access keys", sl.Err(err))
+
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	log.Info("successfully deleted expired access keys")
+
+	return nil
+}
+
+func (s *Service) IsKeySent(ctx context.Context) (bool, error) {
+	const op = "service.IsKeySent"
+
+	log := s.log.With(slog.String("op", op))
+
+	log.Info("attempting to check if key has been sent")
+
+	t, err := s.repository.AccessKeyTime(ctx)
+	if err != nil {
+		log.Error("failed to get access key time", sl.Err(err))
+
+		return true, fmt.Errorf("%s: %w", op, err)
+	}
+
+	if time.Since(t) > 23*time.Hour {
+		log.Info("the access key has not been sent in the last 24 hours")
+		return false, nil
+	}
+
+	return true, nil
 }

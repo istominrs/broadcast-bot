@@ -5,202 +5,171 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io"
-	"log"
+	"github.com/brianvoe/gofakeit"
+	"log/slog"
 	"math/rand"
 	"net/http"
-	"telegram-bot/internal/entity"
-	"telegram-bot/internal/handlers/converter"
-	"telegram-bot/internal/handlers/model"
-
-	"github.com/brianvoe/gofakeit"
+	"telegram-bot/internal/domain/models"
+	"telegram-bot/internal/errors"
+	"telegram-bot/pkg/logger/sl"
 )
 
 type Client struct {
+	log *slog.Logger
+
 	client *http.Client
 }
 
-func New() *Client {
-	return &Client{
-		client: &http.Client{
+type Options func(*Client)
+
+func WithLogger(log *slog.Logger) Options {
+	return func(c *Client) {
+		c.log = log
+	}
+}
+
+func WithClient() Options {
+	return func(c *Client) {
+		c.client = &http.Client{
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{
 					InsecureSkipVerify: true,
 				},
 			},
-		},
+		}
 	}
 }
 
-// CreateAccessURL creates an access URL.
-func (c *Client) CreateAccessURL(server entity.Server) (entity.AccessURL, error) {
-	const op = "client.CreateAccessURL"
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("Recovered in %s: %v", op, r)
-		}
-	}()
+func New(opts ...Options) (*Client, error) {
+	const op = "client.New"
 
-	apiURL := createURL(server.IPAddr, server.Port, server.Key)
-	log.Printf("%s: sending create request to %s", op, apiURL)
-	resp, err := c.sendCreateRequest(apiURL)
+	c := new(Client)
+
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	if c.client == nil {
+		return nil, fmt.Errorf("%s: %w", op, errors.ErrNoClientProvided)
+	}
+
+	if c.log == nil {
+		return nil, fmt.Errorf("%s: %w", op, errors.ErrNoLoggerProvided)
+	}
+
+	return c, nil
+}
+
+func (c *Client) CreateAccessKey(server models.Server) (models.AccessKey, error) {
+	const op = "client.CreateAccessKey"
+
+	log := c.log.With(slog.String("op", op))
+
+	url := createAccessKeyURL(server.IpAddress, server.Port, server.Key)
+
+	log.Info("attempting to send post request")
+
+	requestBody, err := createPostRequestBody()
 	if err != nil {
-		log.Printf("%s: %v", op, err)
-		return entity.AccessURL{}, fmt.Errorf("%s: %w", op, err)
+		log.Error("failed to create request body", sl.Err(err))
+
+		return models.AccessKey{}, fmt.Errorf("%s: %w", op, err)
+	}
+
+	data, err := json.Marshal(requestBody)
+	if err != nil {
+		log.Error("failed to marshal request body", sl.Err(err))
+
+		return models.AccessKey{}, fmt.Errorf("%s: %w", op, err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(data))
+	if err != nil {
+		log.Error("failed to create request", sl.Err(err))
+
+		return models.AccessKey{}, fmt.Errorf("%s: %w", op, err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		log.Error("failed to send request", sl.Err(err))
+
+		return models.AccessKey{}, fmt.Errorf("%s: %w", op, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated {
-		err = fmt.Errorf("status: %d", resp.StatusCode)
-		log.Printf("%s: %v", op, err)
-		return entity.AccessURL{}, fmt.Errorf("%s: %w", op, err)
+		log.Error("failed to create access key", sl.Err(err))
+
+		return models.AccessKey{}, fmt.Errorf("%s: %w", op, err)
 	}
 
-	accessURL, err := parseResponse(resp.Body, apiURL)
-	if err != nil {
-		log.Printf("%s: %v", op, err)
-		return entity.AccessURL{}, fmt.Errorf("%s: %w", op, err)
+	var accessKey models.AccessKey
+	if err := json.NewDecoder(resp.Body).Decode(&accessKey); err != nil {
+		log.Error("failed to decode response body", sl.Err(err))
+
+		return models.AccessKey{}, fmt.Errorf("%s: %w", op, err)
 	}
 
-	log.Printf("%s: successfully created access URL: %s", op, accessURL.AccessKey)
-	return accessURL, nil
+	log.Info("access key created successfully", slog.String("access_key", accessKey.Key))
+	return accessKey, nil
 }
 
-// RemoveAccessURLs removes access URLs.
-func (c *Client) RemoveAccessURLs(accessURLs []entity.AccessURL) error {
-	const op = "client.RemoveAccessURLs"
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("Recovered in %s: %v", op, r)
-		}
-	}()
+func (c *Client) DeleteAccessKeys(accessKeys []models.AccessKey) error {
+	const op = "client.DeleteAccessKeys"
 
-	for _, u := range accessURLs {
-		log.Printf("%s: sending remove request for URL: %s", op, u.ID)
-		resp, err := c.sendRemoveRequest(fmt.Sprintf("%s/%s", u.ApiURL, u.ID))
+	log := c.log.With(slog.String("op", op))
+
+	for _, accessKey := range accessKeys {
+		log.Info("attempting to delete access key", slog.String("access_key", accessKey.Key))
+
+		req, err := http.NewRequest(http.MethodDelete, accessKey.ApiURL, nil)
 		if err != nil {
-			log.Printf("%s: %v", op, err)
+			log.Error("failed to create request", sl.Err(err))
+
+			return fmt.Errorf("%s: %w", op, err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := c.client.Do(req)
+		if err != nil {
+			log.Error("failed to send request", sl.Err(err))
+
 			return fmt.Errorf("%s: %w", op, err)
 		}
 
 		if resp.StatusCode != http.StatusNoContent {
-			err = fmt.Errorf("status: %d", resp.StatusCode)
-			log.Printf("%s: %v", op, err)
+			log.Error("failed to delete access key", sl.Err(err))
+
 			return fmt.Errorf("%s: %w", op, err)
 		}
 
-		log.Printf("%s: successfully removed URL: %s", op, u.ID)
+		log.Info("access key deleted successfully", slog.String("access_key", accessKey.Key))
 	}
 
 	return nil
 }
 
-// sendRemoveRequest sends a DELETE request to the specified API URL.
-func (c *Client) sendRemoveRequest(apiURL string) (*http.Response, error) {
-	const op = "client.sendRemoveRequest"
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("Recovered in %s: %v", op, r)
-		}
-	}()
-
-	req, err := http.NewRequest(http.MethodDelete, apiURL, nil)
-	if err != nil {
-		log.Printf("%s: %v", op, err)
-		return nil, fmt.Errorf("%s: %w", op, err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		log.Printf("%s: %v", op, err)
-		return nil, fmt.Errorf("%s: %w", op, err)
-	}
-
-	log.Printf("%s: received response with status code %d", op, resp.StatusCode)
-	return resp, nil
-}
-
-// sendCreateRequest sends a POST request to the specified API URL with a generated request body.
-func (c *Client) sendCreateRequest(apiURL string) (*http.Response, error) {
-	const op = "client.sendCreateRequest"
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("Recovered in %s: %v", op, r)
-		}
-	}()
-
-	body, err := createPostRequest()
-	if err != nil {
-		log.Printf("%s: %v", op, err)
-		return nil, fmt.Errorf("%s: %w", op, err)
-	}
-
-	data, err := json.Marshal(body)
-	if err != nil {
-		log.Printf("%s: %v", op, err)
-		return nil, fmt.Errorf("%s: %w", op, err)
-	}
-
-	req, err := http.NewRequest(http.MethodPost, apiURL, bytes.NewBuffer(data))
-	if err != nil {
-		log.Printf("%s: %v", op, err)
-		return nil, fmt.Errorf("%s: %w", op, err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		log.Printf("%s: %v", op, err)
-		return nil, fmt.Errorf("%s: %w", op, err)
-	}
-
-	log.Printf("%s: received response with status code %d", op, resp.StatusCode)
-	return resp, nil
-}
-
-// parseResponse parses JSON body into response struct.
-func parseResponse(body io.Reader, apiURL string) (entity.AccessURL, error) {
-	const op = "client.parseResponse"
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("Recovered in %s: %v", op, r)
-		}
-	}()
-
-	var createdURL model.Response
-	if err := json.NewDecoder(body).Decode(&createdURL); err != nil {
-		log.Printf("%s: %v", op, err)
-		return entity.AccessURL{}, fmt.Errorf("%s: %w", op, err)
-	}
-
-	log.Printf("%s: successfully parsed response for URL: %s", op, apiURL)
-	return converter.ToEntityFromClient(createdURL, apiURL), nil
-}
-
-// createURL creates URL for API requests.
-func createURL(ipAddr string, port int, key string) string {
-	return fmt.Sprintf("https://%s:%d/%s/access-keys", ipAddr, port, key)
-}
-
-// createPostRequest generates a new request body with random data.
-func createPostRequest() (model.Request, error) {
+func createPostRequestBody() (models.Request, error) {
 	const method = "chacha20-ietf-poly1305"
 
-	req := model.Request{
+	return models.Request{
 		Name:     gofakeit.Name(),
 		Method:   method,
 		Password: generateRandomPassword(),
 		Port:     rand.Intn(60000),
-		Limit: model.DataLimit{
-			Bytes: 1024 * 1024 * 1024 * 100 * 1000 * 250,
+		Limit: models.DataLimit{
+			Bytes: 1024 * 1024 * 1024 * 1024 * 1024,
 		},
-	}
-
-	return req, nil
+	}, nil
 }
 
-// generateRandomPassword generates a random password with fixed length.
+func createAccessKeyURL(ipAddress string, port int, key string) string {
+	return fmt.Sprintf("https://%s:%d/%s/access-keys", ipAddress, port, key)
+}
+
 func generateRandomPassword() string {
 	return gofakeit.Password(true, true, true, true, false, 10)
 }

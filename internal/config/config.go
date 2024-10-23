@@ -6,12 +6,11 @@ import (
 )
 
 type Config struct {
-	DSN            string
-	Token          string
-	ChannelID      int64
+	DSN       string
+	Token     string
+	ChannelID int64
 }
 
-// MustLoad return instance of config struct.
 func MustLoad() *Config {
 	var cfg Config
 
@@ -35,7 +34,6 @@ func MustLoad() *Config {
 	return &cfg
 }
 
-// fetchEnv receive variables from env.
 func fetchEnv() (string, string, string) {
 	dsn := os.Getenv("DSN")
 	token := os.Getenv("TOKEN")

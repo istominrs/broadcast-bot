@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 
 	"github.com/golang-migrate/migrate/v4"
@@ -31,7 +32,8 @@ func main() {
 
 	if err := m.Up(); err != nil {
 		if errors.Is(err, migrate.ErrNoChange) {
-			log.Println("no migrations to apply")
+			fmt.Println("no migrations applied")
+
 			return
 		}
 
